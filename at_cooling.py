@@ -32,8 +32,9 @@ def get_args():
     parser.add_argument('--weight-decay', default=5e-4, type=float)
     parser.add_argument('--milestones', default=(100, 150), type=tuple[int])
     parser.add_argument('--gamma', default=0.1, type=float)
-
     parser.add_argument('--total', default=50000, type=int, help='the number of samples in the training set')
+
+    parser.add_argument('--device', default='cuda:0', type=str)
     parser.add_argument('--cooling-ratio', default=20/100, type=float, help='the max proportion of training samples to be cooled')
     parser.add_argument('--cooling-interval', default=10, type=int, help='the number of epochs for which the cooling procedure lasts')
     parser.add_argument('--cooling-start-epoch', default=20, type=int, help='the start epoch of cooling')
@@ -87,7 +88,7 @@ def pgd_at_cooling():
         indices, losses = list(), list()
 
         for data, target, index in train_loader:
-            data, target = data.to(device), target.to(device)
+            data, target = data.to(args.device), target.to(args.device)
             if args.adv_train:
                 data = pgd_inf(model, data, target, args.epsilon, args.alpha, args.steps, args.random_start)
             loss = F.cross_entropy(model(data), target, reduction='none')
@@ -96,7 +97,7 @@ def pgd_at_cooling():
             losses.append(loss.detach().cpu())
 
             # 计算mean loss时去除冷却中的数据
-            loss = loss[torch.nonzero(states[index]).to(device)].mean()
+            loss = loss[torch.nonzero(states[index]).to(args.device)].mean()
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -149,7 +150,7 @@ def pgd_test(loader):
     correct = 0
     adv_correct = 0
     for data, target, index in loader:
-        data, target = data.to(device), target.to(device)
+        data, target = data.to(args.device), target.to(args.device)
         total += len(data)
         with torch.no_grad():
             correct += model(data).argmax(1).eq(target).sum().item()
@@ -163,7 +164,6 @@ def pgd_test(loader):
 
 
 if __name__ == '__main__':
-    device = 'cuda:2'
     args = get_args()
 
     # 计算每个轮次中需要被冷却的数据的个数
@@ -177,10 +177,10 @@ if __name__ == '__main__':
 
     test_loader = get_test_loader(args.batch_size)
     train_loader = get_train_loader(args.batch_size)
-    model = eval(args.model_name)(num_classes=args.num_classes).to(device)
+    model = eval(args.model_name)(num_classes=args.num_classes).to(args.device)
     optimizer = SGD(model.parameters(), lr=args.lr, weight_decay=args.weight_decay, momentum=args.momentum)
     scheduler = MultiStepLR(optimizer=optimizer, milestones=args.milestones, gamma=args.gamma)
-    path = os.path.join('logs', args.model_name+f'_{args.cooling_ratio}_{args.cooling_interval}_{args.cooling_start_epoch}')
+    path = os.path.join('logs/'+args.model_name, f'{args.cooling_ratio}_{args.cooling_interval}_{args.cooling_start_epoch}')
     os.makedirs(path, exist_ok=True)
     logger = SummaryWriter(log_dir=path)
     logger.add_text('args', str(args))
