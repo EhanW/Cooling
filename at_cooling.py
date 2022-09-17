@@ -118,7 +118,7 @@ def pgd_at_cooling():
             rewarming_list[epoch+args.cooling_interval] = cooling_avg_loss
 
             # 冷却过程完成后
-            if len(cooling_list) == 5:
+            if len(cooling_list) == args.cooling_interval:
                 # 计算即将被释放的冷却数据目前的平均loss
                 rewarming_avg_loss = get_avg_loss(losses, cooling_list[0])
                 # 计算当前与被冷却时的loss之差,并记录
