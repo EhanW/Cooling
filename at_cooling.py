@@ -35,9 +35,9 @@ def get_args():
     parser.add_argument('--total', default=50000, type=int, help='the number of samples in the training set')
 
     parser.add_argument('--device', default='cuda:2', type=str)
-    parser.add_argument('--cooling-ratio', default=0.2, type=float, help='the max proportion of training samples to be cooled')
-    parser.add_argument('--cooling-interval', default=10, type=int, help='the number of epochs for which the cooling procedure lasts')
-    parser.add_argument('--cooling-start-epoch', default=50, type=int, help='the start epoch of cooling')
+    parser.add_argument('--cooling-ratio', default=0.5, type=float, help='the max proportion of training samples to be cooled')
+    parser.add_argument('--cooling-interval', default=2, type=int, help='the number of epochs for which the cooling procedure lasts')
+    parser.add_argument('--cooling-start-epoch', default=1, type=int, help='the start epoch of cooling')
 
     return parser.parse_args()
 
@@ -70,9 +70,9 @@ def get_avg_loss(losses, indices):
 def update_states(cooling_indices):
     if len(cooling_list) == args.cooling_interval:
         retrieve_indices = cooling_list.pop(0)
-        states[retrieve_indices] = ~states[retrieve_indices]
+        states[retrieve_indices] = True
     cooling_list.append(cooling_indices)
-    states[cooling_indices] = ~states[cooling_indices]
+    states[cooling_indices] = False
 
 
 def pgd_at_cooling():
@@ -85,8 +85,8 @@ def pgd_at_cooling():
     for epoch in range(args.epochs):
         model.train()
         indices, losses = list(), list()
-
-        for data, target, index in train_loader:
+        print(f'Epoch{epoch}')
+        for id, (data, target, index) in enumerate(train_loader):
             data, target = data.to(args.device), target.to(args.device)
             if args.adv_train:
                 data = pgd_inf(model, data, target, args.epsilon, args.alpha, args.steps, args.random_start)
@@ -95,13 +95,14 @@ def pgd_at_cooling():
             indices.append(index)
             losses.append(loss.detach().cpu())
 
-            # 计算mean loss时去除冷却中的数据
-            loss = loss[torch.nonzero(states[index]).to(args.device)]
-            if len(loss) > 0:
-                loss = loss.mean()
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
+            loss *= states[index].to(args.device)
+            num = states[index].sum().item()
+            if num > 0:
+                loss = loss.sum()/num
+            print(id, loss.item(), num)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
         scheduler.step()
 
         # 按照索引重新排序losses
@@ -111,6 +112,7 @@ def pgd_at_cooling():
 
         # 开始冷却
         if epoch + 1 >= args.cooling_start_epoch:
+            print('cool')
             # 计算需要被冷却的数据索引
             cooling_indices = get_cooling_indices(losses)
             # 计算将被冷却的数据的平均loss
