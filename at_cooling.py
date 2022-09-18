@@ -53,7 +53,7 @@ def sort_losses(indices, losses):
 
 def get_cooling_indices(losses):
     # 去除冷却中的数据
-    indices = torch.nonzero(states)
+    indices = torch.nonzero(states).view(-1)
     total_losses = losses[indices]
     # 获得losses最小的cooling_new个数据的索引
     losses_least = total_losses.sort()[1][:cooling_new]
@@ -112,7 +112,6 @@ def pgd_at_cooling():
 
         # 开始冷却
         if epoch + 1 >= args.cooling_start_epoch:
-            print('cool')
             # 计算需要被冷却的数据索引
             cooling_indices = get_cooling_indices(losses)
             # 计算将被冷却的数据的平均loss
@@ -129,8 +128,8 @@ def pgd_at_cooling():
                 rewarming_list[epoch] = rewarming
                 logger.add_scalar('rewarming', rewarming, global_step=epoch)
             # 更新cooling_list, states
+            print(states.sum().item())
             update_states(cooling_indices)
-
         # 测试与记录
         test_acc, test_adv_acc = pgd_test(test_loader)
         logger.add_scalar('avg loss', avg_loss, global_step=epoch)
@@ -180,9 +179,11 @@ if __name__ == '__main__':
 
     test_loader = get_test_loader(args.batch_size)
     train_loader = get_train_loader(args.batch_size)
+
     model = eval(args.model_name)(num_classes=args.num_classes).to(args.device)
     optimizer = SGD(model.parameters(), lr=args.lr, weight_decay=args.weight_decay, momentum=args.momentum)
     scheduler = MultiStepLR(optimizer=optimizer, milestones=args.milestones, gamma=args.gamma)
+
     path = os.path.join('logs/'+args.model_name, f'{args.cooling_ratio}_{args.cooling_interval}_{args.cooling_start_epoch}')
     os.makedirs(path, exist_ok=True)
     logger = SummaryWriter(log_dir=path)
