@@ -18,7 +18,7 @@ def get_args():
     ]
     parser = argparse.ArgumentParser('CIFAR10-PGD-AT-COOLING')
     parser.add_argument('--adv-train', default=True)
-    parser.add_argument('--model-name', default='preact_resnet18', choices=model_names)
+    parser.add_argument('--model-name', default='resnet18', choices=model_names)
     parser.add_argument('--batch-size', default=128, type=float)
     parser.add_argument('--num_classes', default=10, type=int)
     parser.add_argument('--epsilon', default=8/255, type=float)
@@ -35,9 +35,9 @@ def get_args():
     parser.add_argument('--total', default=50000, type=int, help='the number of samples in the training set')
 
     parser.add_argument('--device', default='cuda:2', type=str)
-    parser.add_argument('--cooling-ratio', default=0.5, type=float, help='the max proportion of training samples to be cooled')
-    parser.add_argument('--cooling-interval', default=2, type=int, help='the number of epochs for which the cooling procedure lasts')
-    parser.add_argument('--cooling-start-epoch', default=1, type=int, help='the start epoch of cooling')
+    parser.add_argument('--cooling-ratio', default=0.2, type=float, help='the max proportion of training samples to be cooled')
+    parser.add_argument('--cooling-interval', default=10, type=int, help='the number of epochs for which the cooling procedure lasts')
+    parser.add_argument('--cooling-start-epoch', default=10, type=int, help='the start epoch of cooling')
 
     return parser.parse_args()
 
