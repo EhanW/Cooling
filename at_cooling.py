@@ -34,10 +34,10 @@ def get_args():
     parser.add_argument('--gamma', default=0.1, type=float)
     parser.add_argument('--total', default=50000, type=int, help='the number of samples in the training set')
 
-    parser.add_argument('--device', default='cuda:0', type=str)
-    parser.add_argument('--cooling-ratio', default=20/100, type=float, help='the max proportion of training samples to be cooled')
+    parser.add_argument('--device', default='cuda:2', type=str)
+    parser.add_argument('--cooling-ratio', default=0.2, type=float, help='the max proportion of training samples to be cooled')
     parser.add_argument('--cooling-interval', default=10, type=int, help='the number of epochs for which the cooling procedure lasts')
-    parser.add_argument('--cooling-start-epoch', default=20, type=int, help='the start epoch of cooling')
+    parser.add_argument('--cooling-start-epoch', default=50, type=int, help='the start epoch of cooling')
 
     return parser.parse_args()
 
@@ -62,7 +62,6 @@ def get_cooling_indices(losses):
 
 
 def get_avg_loss(losses, indices):
-    # indices = torch.nonzero(states)
     total_losses = losses[indices]
     avg_loss = total_losses.mean().item()
     return avg_loss
@@ -97,10 +96,12 @@ def pgd_at_cooling():
             losses.append(loss.detach().cpu())
 
             # 计算mean loss时去除冷却中的数据
-            loss = loss[torch.nonzero(states[index]).to(args.device)].mean()
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+            loss = loss[torch.nonzero(states[index]).to(args.device)]
+            if len(loss) > 0:
+                loss = loss.mean()
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
         scheduler.step()
 
         # 按照索引重新排序losses
@@ -116,7 +117,7 @@ def pgd_at_cooling():
             cooling_avg_loss = get_avg_loss(losses, cooling_indices)
             # 将该loss写入rewarming_list
             rewarming_list[epoch+args.cooling_interval] = cooling_avg_loss
-
+            logger.add_scalar('cooling_loss', cooling_avg_loss, global_step=epoch)
             # 冷却过程完成后
             if len(cooling_list) == args.cooling_interval:
                 # 计算即将被释放的冷却数据目前的平均loss
@@ -173,7 +174,7 @@ if __name__ == '__main__':
     # 冷却列表, 其每个元素是该轮次中冷却数据的索引
     cooling_list = list()
     # 回温列表, 其每个元素是该轮次数据冷却前后loss增长的平均值
-    rewarming_list = [0 for _ in range(args.epochs)]
+    rewarming_list = [0 for _ in range(args.epochs+args.cooling_interval)]
 
     test_loader = get_test_loader(args.batch_size)
     train_loader = get_train_loader(args.batch_size)

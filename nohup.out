@@ -1,0 +1,20 @@
+Killed
+Killed
+Traceback (most recent call last):
+  File "/data/yhwang/projects/Cooling/at_cooling.py", line 187, in <module>
+    pgd_at_cooling()
+  File "/data/yhwang/projects/Cooling/at_cooling.py", line 118, in pgd_at_cooling
+    rewarming_list[epoch+args.cooling_interval] = cooling_avg_loss
+IndexError: list assignment index out of range
+Traceback (most recent call last):
+  File "/data/yhwang/projects/Cooling/at_cooling.py", line 187, in <module>
+    pgd_at_cooling()
+  File "/data/yhwang/projects/Cooling/at_cooling.py", line 118, in pgd_at_cooling
+    rewarming_list[epoch+args.cooling_interval] = cooling_avg_loss
+IndexError: list assignment index out of range
+Traceback (most recent call last):
+  File "/data/yhwang/projects/Cooling/at_cooling.py", line 187, in <module>
+    pgd_at_cooling()
+  File "/data/yhwang/projects/Cooling/at_cooling.py", line 118, in pgd_at_cooling
+    rewarming_list[epoch+args.cooling_interval] = cooling_avg_loss
+IndexError: list assignment index out of range
