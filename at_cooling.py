@@ -85,7 +85,6 @@ def pgd_at_cooling():
     for epoch in range(args.epochs):
         model.train()
         indices, losses = list(), list()
-        print(f'Epoch{epoch}')
         for id, (data, target, index) in enumerate(train_loader):
             data, target = data.to(args.device), target.to(args.device)
             if args.adv_train:
@@ -99,7 +98,6 @@ def pgd_at_cooling():
             num = states[index].sum().item()
             if num > 0:
                 loss = loss.sum()/num
-            print(id, loss.item(), num)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -128,7 +126,6 @@ def pgd_at_cooling():
                 rewarming_list[epoch] = rewarming
                 logger.add_scalar('rewarming', rewarming, global_step=epoch)
             # 更新cooling_list, states
-            print(states.sum().item())
             update_states(cooling_indices)
         # 测试与记录
         test_acc, test_adv_acc = pgd_test(test_loader)
