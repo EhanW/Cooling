@@ -2,4 +2,5 @@
 nohup.out
 .gitignore
 ck.py
+hparam_tune.sh
 

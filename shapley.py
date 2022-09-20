@@ -7,6 +7,7 @@ from data import IndexedCIFAR10Train, IndexedCIFAR10Test
 from utils import *
 import numpy as np
 from torch.optim import SGD
+from networks import *
 
 
 def get_args():
@@ -21,6 +22,7 @@ def get_args():
     parser.add_argument('--adv-train', default=True)
     parser.add_argument('--model-name', default='resnet18', choices=model_names)
     parser.add_argument('--batch-size', default=128, type=float)
+    parser.add_argument('--num_workers', default=4, type=int)
     parser.add_argument('--num_classes', default=10, type=int)
     parser.add_argument('--epsilon', default=8 / 255, type=float)
     parser.add_argument('--alpha', default=2 / 255, type=float)
@@ -34,18 +36,21 @@ def get_args():
     parser.add_argument('--total', default=50000, type=int, help='the number of samples in the training set')
 
     parser.add_argument('--device', default='cuda:2', type=str)
-
+    parser.add_argument('--num-groups', default=10, type=int)
+    parser.add_argument('--num-permutations', default=10, type=int)
+    parser.add_argument('--retrain-epochs', default=5, type=int)
     return parser.parse_args()
 
 
 class DataGroupShapley(object):
-    def __init__(self, model, load_path, num_groups, retrain_epochs, train_set, test_set):
+    def __init__(self, model, load_path, num_groups, num_permutations, retrain_epochs, train_set, test_set):
         self.model = model
         self.load_path = load_path
         self.num_groups = num_groups
         self.retrain_epochs = retrain_epochs
         self.train_set = train_set
         self.test_set = test_set
+        self.num_permutations = num_permutations
 
         self.marginals_history = torch.zeros((0, num_groups))
         self.adv_marginals_history = torch.zeros((0, num_groups))
@@ -60,8 +65,9 @@ class DataGroupShapley(object):
         self.init_acc, self.init_adv_acc = self.test()
         self.group_indices = self.split_groups()
 
-    def run(self, num_permutations):
-        for _ in range(num_permutations):
+    def run(self):
+        for p in range(self.num_permutations):
+            print(p)
             marginals, adv_marginals = self.one_permutation()
             self.marginals_history = torch.cat((self.marginals_history, marginals), dim=0)
             self.adv_marginals_history = torch.cat((self.adv_marginals_history, adv_marginals), dim=0)
@@ -77,13 +83,10 @@ class DataGroupShapley(object):
         new_score = self.init_acc
         new_adv_score = self.init_adv_acc
         for idx, index in enumerate(permutation):
-            self.init_model()
             old_score = new_score
             old_adv_score = new_adv_score
-            indices = []
-            for i in permutation[:idx+1]:
-                indices.append(self.group_indices[i])
-            indices = torch.cat(indices, dim=0)
+
+            indices = self.group_indices[permutation[:idx+1], :].view(-1)
 
             retrain_loader = self.get_retrain_loader(indices)
             self.retrain(retrain_loader)
@@ -119,10 +122,12 @@ class DataGroupShapley(object):
                 losses.append(loss)
         losses = torch.cat(losses, dim=0)
         indices = losses.sort()[1].cpu()
+        group_capacity = int(args.total/self.num_groups)
         group_indices = [
-            indices[k*args.batch_size:(k+1)*args.batch_size]
-            for k in range(int(np.ceil(args.total/self.num_groups)))
+            indices[k*group_capacity:(k+1)*group_capacity]
+            for k in range(self.num_groups)
         ]
+        group_indices = torch.stack(group_indices, dim=0)
         return group_indices
 
     def retrain(self, loader):
@@ -163,6 +168,10 @@ class DataGroupShapley(object):
 
 if __name__ == '__main__':
     args = get_args()
-    train_set = IndexedCIFAR10Train()
-    test_set = IndexedCIFAR10Test()
-
+    path = './logs/shapley/resnet18/at/ckpts/105.pth'
+    model = eval(args.model_name)(args.num_classes).to(args.device)
+    dgs = DataGroupShapley(model, load_path=path, num_groups=args.num_groups,
+                           num_permutations=args.num_permutations, retrain_epochs=args.retrain_epochs,
+                           train_set=IndexedCIFAR10Train(), test_set=IndexedCIFAR10Test())
+    shapley, adv_shapley = dgs.run()
+    print(shapley)
