@@ -38,7 +38,7 @@ def get_args():
     parser.add_argument('--device', default='cuda:2', type=str)
     parser.add_argument('--del-threshold', default=1.5, type=float)
     parser.add_argument('--del-start-epoch', default=1, type=int)
-
+    parser.add_argument('--division-epsilon', default=1e-5, type=float)
     return parser.parse_args()
 
 
@@ -49,7 +49,6 @@ def pgd_at_scale():
     # best_state = np.array([-1, 0.7, 0.3])  # (-best_loss, best_acc, best_adv_acc)
 
     for epoch in range(args.epochs):
-        print(f'Epoch{epoch}')
         model.train()
         for id, (data, target, index) in enumerate(train_loader):
             data, target = data.to(args.device), target.to(args.device)
@@ -57,10 +56,15 @@ def pgd_at_scale():
                 data = pgd_inf(model, data, target, args.epsilon, args.alpha, args.steps, args.random_start)
             loss = F.cross_entropy(model(data), target, reduction='none')
 
+            a = loss.detach().mean().item()
+            b = torch.min(loss.detach()).item()
+            coefficient = 1.5 / (torch.min(loss.detach(), torch.ones_like(loss)*1.5) + args.division_epsilon)
             if epoch + 1 >= args.del_start_epoch:
-                coefficient = 1.5 / torch.min(loss.detach(), torch.ones_like(loss)*1.5)
                 loss *= coefficient
             loss = loss.mean()
+            #print(
+            #    epoch, id, a, b, loss.item(), coefficient, coefficient.eq(1).sum().item(), len(data)
+            #)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()

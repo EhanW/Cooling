@@ -5,7 +5,6 @@ from tqdm.notebook import tqdm
 
 import torch
 from torch.utils.data import RandomSampler, DataLoader
-
 from .utils import accuracy, error
 
 device = ('cuda' if torch.cuda.is_available() else 'cpu')
@@ -129,7 +128,7 @@ class DShap(object):
     def one_iteration(self, tolerance):
         """Runs one iteration of TMC-Shapley algorithm."""
         idxs = np.random.permutation(
-            self.train_len)  # Re read algorithm. We can get random sampler with a dataloader instead
+            self.train_len)  # Reread algorithm. We can get random sampler with a dataloader instead
         marginal_contribs = np.zeros(self.train_len)
 
         truncation_counter = 0
