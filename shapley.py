@@ -1,3 +1,4 @@
+import os
 import torch
 from torch import nn
 import argparse
@@ -36,8 +37,8 @@ def get_args():
     parser.add_argument('--total', default=50000, type=int, help='the number of samples in the training set')
 
     parser.add_argument('--device', default='cuda:2', type=str)
-    parser.add_argument('--num-groups', default=10, type=int)
-    parser.add_argument('--num-permutations', default=10, type=int)
+    parser.add_argument('--num-groups', default=5, type=int)
+    parser.add_argument('--num-permutations', default=15, type=int)
     parser.add_argument('--retrain-epochs', default=5, type=int)
     return parser.parse_args()
 
@@ -67,13 +68,15 @@ class DataGroupShapley(object):
 
     def run(self):
         for p in range(self.num_permutations):
-            print(p)
             marginals, adv_marginals = self.one_permutation()
-            self.marginals_history = torch.cat((self.marginals_history, marginals), dim=0)
-            self.adv_marginals_history = torch.cat((self.adv_marginals_history, adv_marginals), dim=0)
+            self.marginals_history = torch.cat((self.marginals_history, marginals.view(1, -1)), dim=0)
+            self.adv_marginals_history = torch.cat((self.adv_marginals_history, adv_marginals.view(1, -1)), dim=0)
         shapley_values = torch.mean(self.marginals_history, dim=0)
         adv_shapley_values = torch.mean(self.adv_marginals_history, dim=0)
-        return shapley_values, adv_shapley_values
+        shapley_write = open(os.path.join(save_path, 'values.txt'), mode='w')
+        shapley_write.write(
+            'shapley values'+str(shapley_values)+'adv shapley values'+str(adv_shapley_values)
+        )
 
     def one_permutation(self):
         permutation = torch.randperm(self.num_groups)
@@ -168,10 +171,11 @@ class DataGroupShapley(object):
 
 if __name__ == '__main__':
     args = get_args()
-    path = './logs/shapley/resnet18/at/ckpts/105.pth'
+    load_path = './logs/shapley/resnet18/at/ckpts/105.pth'
+    save_path = f'./logs/shapley/resnet18/{args.num_groups}_{args.num_permutations}_{args.retrain_epochs}'
+    os.makedirs(save_path, exist_ok=True)
     model = eval(args.model_name)(args.num_classes).to(args.device)
-    dgs = DataGroupShapley(model, load_path=path, num_groups=args.num_groups,
+    dgs = DataGroupShapley(model, load_path=load_path, num_groups=args.num_groups,
                            num_permutations=args.num_permutations, retrain_epochs=args.retrain_epochs,
                            train_set=IndexedCIFAR10Train(), test_set=IndexedCIFAR10Test())
-    shapley, adv_shapley = dgs.run()
-    print(shapley)
+    dgs.run()
