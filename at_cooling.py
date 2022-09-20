@@ -35,9 +35,9 @@ def get_args():
     parser.add_argument('--total', default=50000, type=int, help='the number of samples in the training set')
 
     parser.add_argument('--device', default='cuda:2', type=str)
-    parser.add_argument('--cooling-ratio', default=0.2, type=float, help='the max proportion of training samples to be cooled')
-    parser.add_argument('--cooling-interval', default=10, type=int, help='the number of epochs for which the cooling procedure lasts')
-    parser.add_argument('--cooling-start-epoch', default=10, type=int, help='the start epoch of cooling')
+    parser.add_argument('--cooling-ratio', default=0, type=float, help='the max proportion of training samples to be cooled')
+    parser.add_argument('--cooling-interval', default=300, type=int, help='the number of epochs for which the cooling procedure lasts')
+    parser.add_argument('--cooling-start-epoch', default=300, type=int, help='the start epoch of cooling')
 
     return parser.parse_args()
 
@@ -139,6 +139,8 @@ def pgd_at_cooling():
             if (cur_state != best_state).any():
                 torch.save(model.state_dict(), os.path.join(save_path, f'{epoch}.pth'))
                 best_state = cur_state
+        if epoch in [100, 105, 110, 150, 155, 160]:
+            torch.save(model.state_dict(), os.path.join(save_path, f'{epoch}.pth'))
 
     torch.save(model.state_dict(), os.path.join(save_path, 'end.pth'))
 
