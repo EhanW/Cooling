@@ -36,8 +36,8 @@ def get_args():
     parser.add_argument('--weight-decay', default=5e-4, type=float)
     parser.add_argument('--total', default=50000, type=int, help='the number of samples in the training set')
 
-    parser.add_argument('--device', default='cuda:2', type=str)
-    parser.add_argument('--num-groups', default=5, type=int)
+    parser.add_argument('--device', default='cuda:1', type=str)
+    parser.add_argument('--num-groups', default=10, type=int)
     parser.add_argument('--num-permutations', default=15, type=int)
     parser.add_argument('--retrain-epochs', default=5, type=int)
     return parser.parse_args()
