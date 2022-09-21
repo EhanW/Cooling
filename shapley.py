@@ -2,9 +2,9 @@ import os
 import torch
 from torch import nn
 import argparse
-from torch.utils.data.sampler import SubsetRandomSampler
-from torch.utils.data import DataLoader, Dataset
-from data import IndexedCIFAR10Train, IndexedCIFAR10Test
+from torch.utils.data import DataLoader
+from torchvision import datasets
+from torchvision import transforms as T
 from utils import *
 import numpy as np
 from torch.optim import SGD
@@ -23,7 +23,7 @@ def get_args():
     parser.add_argument('--adv-train', default=True)
     parser.add_argument('--model-name', default='resnet18', choices=model_names)
     parser.add_argument('--batch-size', default=128, type=float)
-    parser.add_argument('--num_workers', default=4, type=int)
+    parser.add_argument('--num_workers', default=0, type=int)
     parser.add_argument('--num_classes', default=10, type=int)
     parser.add_argument('--epsilon', default=8 / 255, type=float)
     parser.add_argument('--alpha', default=2 / 255, type=float)
@@ -44,27 +44,44 @@ def get_args():
 
 
 class DataGroupShapley(object):
-    def __init__(self, model, load_path, num_groups, num_permutations, retrain_epochs, train_set, test_set):
+    def __init__(self, model, load_path, num_groups, num_permutations, retrain_epochs, data_path):
         self.model = model
+
         self.load_path = load_path
         self.num_groups = num_groups
         self.retrain_epochs = retrain_epochs
-        self.train_set = train_set
-        self.test_set = test_set
         self.num_permutations = num_permutations
+        self.data_path = data_path
+
+        self.train_images, self.train_labels, self.train_loader, self.test_loader = self.prepare_data()
 
         self.marginals_history = torch.zeros((0, num_groups))
         self.adv_marginals_history = torch.zeros((0, num_groups))
-
-        self.train_loader = DataLoader(self.train_set, batch_size=args.batch_size, num_workers=args.num_workers,
-                                       shuffle=True, pin_memory=True)
-        self.test_loader = DataLoader(self.test_set, batch_size=args.batch_size, num_workers=args.num_workers,
-                                      shuffle=False, pin_memory=True)
         self.optimizer = SGD(self.model.parameters(), lr=args.lr, weight_decay=args.weight_decay, momentum=args.momentum)
 
         self.init_model()
         self.init_acc, self.init_adv_acc = self.test()
         self.group_indices = self.split_groups()
+
+    def prepare_data(self):
+        train_set = datasets.CIFAR10(root=self.data_path,
+                                     download=False,
+                                     train=True,
+                                     transform=T.Compose([T.RandomCrop(32, 4),
+                                                          T.RandomHorizontalFlip(),
+                                                          T.ToTensor()]))
+        test_set = datasets.CIFAR10(root=self.data_path,
+                                    download=False,
+                                    train=False,
+                                    transform=T.ToTensor())
+
+        train_loader = DataLoader(train_set, batch_size=args.total, shuffle=False, pin_memory=True)
+        train_images, train_labels = next(iter(train_loader))
+        train_images, train_labels = train_images.to(args.device), train_labels.to(args.device)
+
+        train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=False, pin_memory=True)
+        test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, pin_memory=True)
+        return train_images, train_labels, train_loader, test_loader
 
     def run(self):
         for p in range(self.num_permutations):
@@ -91,8 +108,7 @@ class DataGroupShapley(object):
 
             indices = self.group_indices[permutation[:idx+1], :].view(-1)
 
-            retrain_loader = self.get_retrain_loader(indices)
-            self.retrain(retrain_loader)
+            self.retrain(indices)
             new_score, new_adv_score = self.test()
 
             marginals[index] = new_score - old_score
@@ -103,18 +119,11 @@ class DataGroupShapley(object):
         ckpt = torch.load(self.load_path, map_location=args.device)
         self.model.load_state_dict(ckpt)
 
-    def get_retrain_loader(self, indices):
-        sampler = SubsetRandomSampler(indices)
-        loader = DataLoader(self.train_set, batch_size=args.batch_size, num_workers=args.num_workers,
-                            sampler=sampler, pin_memory=True)
-        return loader
-
     def split_groups(self):
         self.model.eval()
-        sequential_train_loader = DataLoader(self.train_set, batch_size=args.batch_size, num_workers=args.num_workers,
-                                             shuffle=False, pin_memory=True)
+
         losses = list()
-        for data, target, index in sequential_train_loader:
+        for data, target, index in self.train_loader:
             data, target = data.to(args.device), target.to(args.device)
             with torch.no_grad():
                 adv_data = pgd_inf_test(self.model, data, target, args.epsilon, args.alpha, args.steps,
@@ -133,15 +142,21 @@ class DataGroupShapley(object):
         group_indices = torch.stack(group_indices, dim=0)
         return group_indices
 
-    def retrain(self, loader):
+    def retrain(self, indices):
         self.init_model()
         self.model.train()
         for epoch in range(self.retrain_epochs):
-            self.retrain_epoch(loader)
+            self.retrain_epoch(indices)
 
-    def retrain_epoch(self, loader):
-        for id, (data, target, index) in enumerate(loader):
-            data, target = data.to(args.device), target.to(args.device)
+    def retrain_epoch(self, indices):
+        shuffle = torch.randperm(len(indices))
+        images, labels = self.train_images[indices[shuffle]], self.train_labels[indices[shuffle]]
+
+        num_batches = int(np.ceil(len(images)/args.batch_size))
+        for batch_idx in range(num_batches):
+            data = images[batch_idx*args.batch_size:(batch_idx+1)*args.batch_size]
+            target = labels[batch_idx*args.batch_size:(batch_idx+1)*args.batch_size]
+
             if args.adv_train:
                 data = pgd_inf(self.model, data, target, args.epsilon, args.alpha, args.steps, args.random_start)
             loss = F.cross_entropy(self.model(data), target)
@@ -177,5 +192,6 @@ if __name__ == '__main__':
     model = eval(args.model_name)(args.num_classes).to(args.device)
     dgs = DataGroupShapley(model, load_path=load_path, num_groups=args.num_groups,
                            num_permutations=args.num_permutations, retrain_epochs=args.retrain_epochs,
-                           train_set=IndexedCIFAR10Train(), test_set=IndexedCIFAR10Test())
+                           data_path='/data/yihan/datasets')
     dgs.run()
+    
