@@ -143,6 +143,7 @@ class DataGroupShapley(object):
                 A[col_idx][i] = 1
                 A[col_idx][j] = -1
                 b[col_idx] = utilities[i, j]
+                col_idx += 1
         A[-1] = np.ones(args.num_groups)
         b[-1] = total_utility
 
