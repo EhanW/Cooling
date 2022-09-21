@@ -39,9 +39,9 @@ def get_args():
     parser.add_argument('--device', default='cuda:2', type=str)
     parser.add_argument('--shapley-mode', default='group_testing')
     parser.add_argument('--group-mode', default='probability', choices=['probability', 'quantity'])
-    parser.add_argument('--num-groups', default=5, type=int)
-    parser.add_argument('--num-iterations', default=1, type=int)
-    parser.add_argument('--retrain-epochs', default=1, type=int)
+    parser.add_argument('--num-groups', default=8, type=int)
+    parser.add_argument('--num-iterations', default=30, type=int)
+    parser.add_argument('--retrain-epochs', default=10, type=int)
     return parser.parse_args()
 
 
@@ -68,6 +68,15 @@ class DataGroupShapley(object):
 
         self.retrain(np.arange(args.total))
         self.final_acc, self.final_adv_acc = self.test()
+
+        self.info_writer = open(os.path.join(save_path, 'info.txt'), mode='w')
+        for g in dgs.group_indices:
+            self.info_writer.write(str(len(g)))
+        self.info_writer.write('init acc'+str(self.init_acc))
+        self.info_writer.write('init adv acc'+str(self.init_adv_acc))
+        self.info_writer.write('final acc'+str(self.final_acc))
+        self.info_writer.write('final adv acc'+str(self.final_adv_acc))
+
 
     def prepare_data(self):
         train_set = datasets.CIFAR10(root=self.data_path,
@@ -128,9 +137,12 @@ class DataGroupShapley(object):
 
         shapley_values = self.solve(utilities, self.final_acc - self.init_acc)
         adv_shapley_values = self.solve(adv_utilities, self.final_adv_acc - self.final_adv_acc)
-        shapley_writer = open(os.path.join(save_path, 'values.txt'), mode='w')
-        shapley_writer.write(
-            'shapley values' + str(shapley_values) + 'adv shapley values' + str(adv_shapley_values)
+
+        self.info_writer.write(
+            'shapley values' + str(shapley_values)
+        )
+        self.info_writer.write(
+            'adv shapley values' + str(adv_shapley_values)
         )
 
     def solve(self, utilities, total_utility):
@@ -245,7 +257,6 @@ if __name__ == '__main__':
     dgs = DataGroupShapley(model, load_path=load_path, num_groups=args.num_groups,
                            num_iterations=args.num_iterations, retrain_epochs=args.retrain_epochs,
                            data_path='/data/yihan/datasets')
-    group_writer = open(os.path.join(save_path, 'groups.txt'), mode='w')
-    group_writer.write(str(dgs.group_indices))
+
     dgs.run()
     
