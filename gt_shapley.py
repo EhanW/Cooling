@@ -120,8 +120,8 @@ class DataGroupShapley(object):
         adv_utilities = np.zeros(shape=(0, args.num_groups, args.num_groups))
         for p in range(self.num_iterations):
             utility, adv_utility = self.one_iteration()
-            utilities = np.concatenate((utilities, utility), axis=0)
-            adv_utilities = np.concatenate((adv_utilities, adv_utility), axis=0)
+            utilities = np.concatenate((utilities, utility.reshape(1, args.num_groups, args.num_groups)), axis=0)
+            adv_utilities = np.concatenate((adv_utilities, adv_utility.reshape(1, args.num_groups, args.num_groups)), axis=0)
 
         utilities = utilities.mean(axis=0) * self.z
         adv_utilities = adv_utilities.mean(axis=0) * self.z
@@ -146,7 +146,7 @@ class DataGroupShapley(object):
         A[-1] = np.ones(args.num_groups)
         b[-1] = total_utility
 
-        solution = np.linalg.lstsq(A, b, rcond=None)
+        solution = np.linalg.lstsq(A, b, rcond=None)[0]
         return solution
 
     def one_iteration(self):
