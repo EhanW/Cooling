@@ -37,6 +37,7 @@ def get_args():
     parser.add_argument('--total', default=50000, type=int, help='the number of samples in the training set')
 
     parser.add_argument('--device', default='cuda:2', type=str)
+    parser.add_argument('--shapley-mode', default='group_testing')
     parser.add_argument('--group-mode', default='probability', choices=['probability', 'quantity'])
     parser.add_argument('--num-groups', default=5, type=int)
     parser.add_argument('--num-iterations', default=15, type=int)
@@ -55,7 +56,8 @@ class DataGroupShapley(object):
         self.data_path = data_path
 
         self.train_images, self.train_labels, self.train_loader, self.test_loader = self.prepare_data()
-        print(self.train_images.shape)
+        self.weight, self.z = self.random_weight()
+
         self.marginals_history = torch.zeros((0, num_groups))
         self.adv_marginals_history = torch.zeros((0, num_groups))
         self.optimizer = SGD(self.model.parameters(), lr=args.lr, weight_decay=args.weight_decay, momentum=args.momentum)
@@ -63,6 +65,9 @@ class DataGroupShapley(object):
         self.init_model()
         self.init_acc, self.init_adv_acc = self.test()
         self.group_indices = self.split_groups()
+
+        self.retrain(np.arange(args.total))
+        self.final_acc, self.final_adv_acc = self.test()
 
     def prepare_data(self):
         train_set = datasets.CIFAR10(root=self.data_path,
@@ -84,40 +89,75 @@ class DataGroupShapley(object):
         test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, pin_memory=True)
         return train_images, train_labels, train_loader, test_loader
 
+    def random_weight(self):
+        weight = []
+        for i in range(1, args.num_groups):
+            weight.append(1 / i + 1 / (args.num_groups - i))
+        weight = np.array(weight)
+        z = weight.sum()
+        weight = weight / z
+        return weight, z
+
+    def random_indices(self):
+        choices = np.arange(1, args.num_groups)
+        subset_card = np.random.choice(choices, size=1, replace=False, p=self.weight)
+        subset = np.random.choice(np.arange(args.num_groups), size=subset_card, replace=False, p=None)
+
+        utility = np.zeros(shape=(args.num_groups, args.num_groups))
+        for i in range(args.num_groups):
+            for j in range(i, args.num_groups):
+                utility[i,j] = float(i in subset) - float(j in subset)
+
+        indices = list()
+        for i in subset:
+            indices.append(self.group_indices[i])
+        indices = torch.cat(indices, dim=0)
+        return indices, utility
+
     def run(self):
+
+        utilities = np.zeros(shape=(0, args.num_groups, args.num_groups))
+        adv_utilities = np.zeros(shape=(0, args.num_groups, args.num_groups))
         for p in range(self.num_iterations):
-            marginals, adv_marginals = self.one_iteration()
-            self.marginals_history = torch.cat((self.marginals_history, marginals.view(1, -1)), dim=0)
-            self.adv_marginals_history = torch.cat((self.adv_marginals_history, adv_marginals.view(1, -1)), dim=0)
-        shapley_values = torch.mean(self.marginals_history, dim=0)
-        adv_shapley_values = torch.mean(self.adv_marginals_history, dim=0)
+            utility, adv_utility = self.one_iteration()
+            utilities = np.concatenate((utilities, utility), axis=0)
+            adv_utilities = np.concatenate((adv_utilities, adv_utility), axis=0)
+
+        utilities = utilities.mean(axis=0) * self.z
+        adv_utilities = adv_utilities.mean(axis=0) * self.z
+
+        shapley_values = self.solve(utilities, self.final_acc - self.init_acc)
+        adv_shapley_values = self.solve(adv_utilities, self.final_adv_acc - self.final_adv_acc)
         shapley_writer = open(os.path.join(save_path, 'values.txt'), mode='w')
         shapley_writer.write(
-            'shapley values'+str(shapley_values)+'adv shapley values'+str(adv_shapley_values)
+            'shapley values' + str(shapley_values) + 'adv shapley values' + str(adv_shapley_values)
         )
 
+    def solve(self, utilities, total_utility):
+        num_columns = int((args.num_groups-1)*args.num_groups/2) + 1
+        A = np.zeros(shape=(num_columns, args.num_groups))
+        b = np.zeros(args.num_groups)
+        col_idx = 0
+        for i in range(args.num_groups):
+            for j in range(i, args.num_groups):
+                A[col_idx][i] = 1
+                A[col_idx][j] = -1
+                b[col_idx] = utilities[i, j]
+        A[-1] = np.ones(args.num_groups)
+        b[-1] = total_utility
+
+        solution = np.linalg.lstsq(A, b, rcond=None)
+        return solution
+
     def one_iteration(self):
-        permutation = torch.randperm(self.num_groups)
-        marginals = torch.zeros(self.num_groups)
-        adv_marginals = torch.zeros(self.num_groups)
-
-        new_score = self.init_acc
-        new_adv_score = self.init_adv_acc
-        for idx, index in enumerate(permutation):
-            old_score = new_score
-            old_adv_score = new_adv_score
-
-            indices = list()
-            for i in permutation[:idx+1]:
-                indices.append(self.group_indices[i])
-
-            indices = torch.cat(indices, dim=0)
-            self.retrain(indices)
-            new_score, new_adv_score = self.test()
-
-            marginals[index] = new_score - old_score
-            adv_marginals[index] = new_adv_score - old_adv_score
-        return marginals, adv_marginals
+        indices, utility = self.random_indices()
+        self.retrain(indices)
+        acc, adv_acc = self.test()
+        acc_gain = acc - self.init_acc
+        adv_acc_gain = adv_acc - self.init_adv_acc
+        utility = acc_gain * utility
+        adv_utility = adv_acc_gain * utility
+        return utility, adv_utility
 
     def init_model(self):
         ckpt = torch.load(self.load_path, map_location=args.device)
@@ -125,7 +165,6 @@ class DataGroupShapley(object):
 
     def split_groups(self):
         self.model.eval()
-
         losses = list()
         for data, target in self.train_loader:
             data, target = data.to(args.device), target.to(args.device)
@@ -199,7 +238,7 @@ class DataGroupShapley(object):
 if __name__ == '__main__':
     args = get_args()
     load_path = './logs/shapley/resnet18/at/ckpts/105.pth'
-    save_path = f'./logs/shapley/resnet18/{args.group_mode}/{args.num_groups}_{args.num_iterations}_{args.retrain_epochs}'
+    save_path = f'./logs/shapley/resnet18/{args.shapley_mode}/{args.group_mode}/{args.num_groups}_{args.num_iterations}_{args.retrain_epochs}'
     os.makedirs(save_path, exist_ok=True)
     model = eval(args.model_name)(args.num_classes).to(args.device)
     dgs = DataGroupShapley(model, load_path=load_path, num_groups=args.num_groups,
