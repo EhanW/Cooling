@@ -134,7 +134,7 @@ class DataGroupShapley(object):
         )
 
     def solve(self, utilities, total_utility):
-        num_columns = int((args.num_groups-1)*args.num_groups/2) + 1
+        num_columns = int((args.num_groups+1)*args.num_groups/2) + 1
         A = np.zeros(shape=(num_columns, args.num_groups))
         b = np.zeros(num_columns)
         col_idx = 0
