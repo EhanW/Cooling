@@ -145,3 +145,10 @@ Traceback (most recent call last):
   File "/data/yhwang/anaconda3/lib/python3.9/site-packages/torch/nn/modules/conv.py", line 453, in _conv_forward
     return F.conv2d(input, weight, bias, self.stride,
 RuntimeError: Expected 3D (unbatched) or 4D (batched) input to conv2d, but got input of size: [128, 1, 3, 32, 32]
+torch.Size([50000, 3, 32, 32])
+Traceback (most recent call last):
+  File "/data/yhwang/projects/Cooling/shapley.py", line 216, in <module>
+    dgs = DataGroupShapley(model, load_path=load_path, num_groups=args.num_groups,
+  File "/data/yhwang/projects/Cooling/shapley.py", line 69, in __init__
+    for g in dgs.group_indices:
+NameError: name 'dgs' is not defined

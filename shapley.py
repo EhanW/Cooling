@@ -66,7 +66,7 @@ class DataGroupShapley(object):
         self.group_indices = self.split_groups()
 
         self.info_writer = open(os.path.join(save_path, 'info.txt'), mode='w')
-        for g in dgs.group_indices:
+        for g in self.group_indices:
             self.info_writer.write(str(len(g)))
 
         #self.info_writer.write('init acc' + str(self.init_acc))
