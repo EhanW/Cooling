@@ -36,12 +36,12 @@ def get_args():
     parser.add_argument('--weight-decay', default=5e-4, type=float)
     parser.add_argument('--total', default=50000, type=int, help='the number of samples in the training set')
 
-    parser.add_argument('--device', default='cuda:2', type=str)
+    parser.add_argument('--device', default='cuda:1', type=str)
     parser.add_argument('--shapley-mode', default='group_testing')
     parser.add_argument('--group-mode', default='probability', choices=['probability', 'quantity'])
     parser.add_argument('--num-groups', default=5, type=int)
-    parser.add_argument('--num-iterations', default=15, type=int)
-    parser.add_argument('--retrain-epochs', default=5, type=int)
+    parser.add_argument('--num-iterations', default=1, type=int)
+    parser.add_argument('--retrain-epochs', default=1, type=int)
     return parser.parse_args()
 
 
@@ -245,7 +245,6 @@ if __name__ == '__main__':
                            num_iterations=args.num_iterations, retrain_epochs=args.retrain_epochs,
                            data_path='/data/yihan/datasets')
     shapley_writer = open(os.path.join(save_path, 'groups.txt'), mode='w')
-    for group in dgs.group_indices:
-        print(group.shape)
+
     dgs.run()
     
