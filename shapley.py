@@ -38,7 +38,7 @@ def get_args():
 
     parser.add_argument('--device', default='cuda:2', type=str)
     parser.add_argument('--group-mode', default='probability', choices=['probability', 'quantity'])
-    parser.add_argument('--num-groups', default=10, type=int)
+    parser.add_argument('--num-groups', default=5, type=int)
     parser.add_argument('--num-permutations', default=15, type=int)
     parser.add_argument('--retrain-epochs', default=5, type=int)
     return parser.parse_args()
@@ -55,7 +55,7 @@ class DataGroupShapley(object):
         self.data_path = data_path
 
         self.train_images, self.train_labels, self.train_loader, self.test_loader = self.prepare_data()
-
+        print(self.train_images.shape)
         self.marginals_history = torch.zeros((0, num_groups))
         self.adv_marginals_history = torch.zeros((0, num_groups))
         self.optimizer = SGD(self.model.parameters(), lr=args.lr, weight_decay=args.weight_decay, momentum=args.momentum)
@@ -91,8 +91,8 @@ class DataGroupShapley(object):
             self.adv_marginals_history = torch.cat((self.adv_marginals_history, adv_marginals.view(1, -1)), dim=0)
         shapley_values = torch.mean(self.marginals_history, dim=0)
         adv_shapley_values = torch.mean(self.adv_marginals_history, dim=0)
-        shapley_write = open(os.path.join(save_path, 'values.txt'), mode='w')
-        shapley_write.write(
+        shapley_writer = open(os.path.join(save_path, 'values.txt'), mode='w')
+        shapley_writer.write(
             'shapley values'+str(shapley_values)+'adv shapley values'+str(adv_shapley_values)
         )
 
@@ -143,7 +143,7 @@ class DataGroupShapley(object):
             probs = torch.exp(-losses)
             for i in range(args.num_groups):
                 group_indices.append(
-                    torch.nonzero((i/args.num_groups < probs) * (probs <= (i+1)/args.num_groups))
+                    torch.nonzero((i/args.num_groups < probs) * (probs <= (i+1)/args.num_groups)).view(-1)
                 )
 
         if args.group_mode == 'quantity':
@@ -164,7 +164,6 @@ class DataGroupShapley(object):
     def retrain_epoch(self, indices):
         shuffle = torch.randperm(len(indices))
         images, labels = self.train_images[indices[shuffle]], self.train_labels[indices[shuffle]]
-
         num_batches = int(np.ceil(len(images)/args.batch_size))
         for batch_idx in range(num_batches):
             data = images[batch_idx*args.batch_size:(batch_idx+1)*args.batch_size]
@@ -206,5 +205,8 @@ if __name__ == '__main__':
     dgs = DataGroupShapley(model, load_path=load_path, num_groups=args.num_groups,
                            num_permutations=args.num_permutations, retrain_epochs=args.retrain_epochs,
                            data_path='/data/yihan/datasets')
-    #dgs.run()
+    shapley_writer = open(os.path.join(save_path, 'groups.txt'), mode='w')
+    for group in dgs.group_indices:
+        print(group.shape)
+    dgs.run()
     
