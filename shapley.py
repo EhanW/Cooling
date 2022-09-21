@@ -19,7 +19,7 @@ def get_args():
         'vgg16', 'wide_resnet32_10'
                  'preact_resnet18', 'preact_resnet34', 'preact_resnet50',
     ]
-    parser = argparse.ArgumentParser('CIFAR10-PGD-AT-SCALE')
+    parser = argparse.ArgumentParser('CIFAR10-PGD-AT-SHAPLEY')
     parser.add_argument('--adv-train', default=True)
     parser.add_argument('--model-name', default='resnet18', choices=model_names)
     parser.add_argument('--batch-size', default=128, type=float)
@@ -36,11 +36,12 @@ def get_args():
     parser.add_argument('--weight-decay', default=5e-4, type=float)
     parser.add_argument('--total', default=50000, type=int, help='the number of samples in the training set')
 
-    parser.add_argument('--device', default='cuda:2', type=str)
+    parser.add_argument('--device', default='cuda:1', type=str)
+    parser.add_argument('--shapley-mode', default='original')
     parser.add_argument('--group-mode', default='probability', choices=['probability', 'quantity'])
-    parser.add_argument('--num-groups', default=5, type=int)
-    parser.add_argument('--num-iterations', default=15, type=int)
-    parser.add_argument('--retrain-epochs', default=5, type=int)
+    parser.add_argument('--num-groups', default=8, type=int)
+    parser.add_argument('--num-iterations', default=16, type=int)
+    parser.add_argument('--retrain-epochs', default=10, type=int)
     return parser.parse_args()
 
 
@@ -63,6 +64,13 @@ class DataGroupShapley(object):
         self.init_model()
         self.init_acc, self.init_adv_acc = self.test()
         self.group_indices = self.split_groups()
+
+        self.info_writer = open(os.path.join(save_path, 'info.txt'), mode='w')
+        for g in dgs.group_indices:
+            self.info_writer.write(str(len(g)))
+
+        #self.info_writer.write('init acc' + str(self.init_acc))
+        #self.info_writer.write('init adv acc' + str(self.init_adv_acc))
 
     def prepare_data(self):
         train_set = datasets.CIFAR10(root=self.data_path,
@@ -91,9 +99,12 @@ class DataGroupShapley(object):
             self.adv_marginals_history = torch.cat((self.adv_marginals_history, adv_marginals.view(1, -1)), dim=0)
         shapley_values = torch.mean(self.marginals_history, dim=0)
         adv_shapley_values = torch.mean(self.adv_marginals_history, dim=0)
-        shapley_writer = open(os.path.join(save_path, 'values.txt'), mode='w')
-        shapley_writer.write(
-            'shapley values'+str(shapley_values)+'adv shapley values'+str(adv_shapley_values)
+
+        self.info_writer.write(
+            'shapley values' + str(shapley_values)
+        )
+        self.info_writer.write(
+            'adv shapley values' + str(adv_shapley_values)
         )
 
     def one_iteration(self):
@@ -199,14 +210,12 @@ class DataGroupShapley(object):
 if __name__ == '__main__':
     args = get_args()
     load_path = './logs/shapley/resnet18/at/ckpts/105.pth'
-    save_path = f'./logs/shapley/resnet18/{args.group_mode}/{args.num_groups}_{args.num_iterations}_{args.retrain_epochs}'
+    save_path = f'./logs/shapley/resnet18/{args.shapley_mode}/{args.group_mode}/{args.num_groups}_{args.num_iterations}_{args.retrain_epochs}'
     os.makedirs(save_path, exist_ok=True)
     model = eval(args.model_name)(args.num_classes).to(args.device)
     dgs = DataGroupShapley(model, load_path=load_path, num_groups=args.num_groups,
                            num_iterations=args.num_iterations, retrain_epochs=args.retrain_epochs,
                            data_path='/data/yihan/datasets')
-    shapley_writer = open(os.path.join(save_path, 'groups.txt'), mode='w')
-    for group in dgs.group_indices:
-        print(group.shape)
+
     dgs.run()
     

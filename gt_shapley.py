@@ -19,7 +19,7 @@ def get_args():
         'vgg16', 'wide_resnet32_10'
                  'preact_resnet18', 'preact_resnet34', 'preact_resnet50',
     ]
-    parser = argparse.ArgumentParser('CIFAR10-PGD-AT-SCALE')
+    parser = argparse.ArgumentParser('CIFAR10-PGD-AT-GTSHAPLEY')
     parser.add_argument('--adv-train', default=True)
     parser.add_argument('--model-name', default='resnet18', choices=model_names)
     parser.add_argument('--batch-size', default=128, type=float)
