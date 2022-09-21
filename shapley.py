@@ -36,7 +36,8 @@ def get_args():
     parser.add_argument('--weight-decay', default=5e-4, type=float)
     parser.add_argument('--total', default=50000, type=int, help='the number of samples in the training set')
 
-    parser.add_argument('--device', default='cuda:1', type=str)
+    parser.add_argument('--device', default='cuda:2', type=str)
+    parser.add_argument('--group-mode', default='probability', choices=['probability', 'quantity'])
     parser.add_argument('--num-groups', default=10, type=int)
     parser.add_argument('--num-permutations', default=15, type=int)
     parser.add_argument('--retrain-epochs', default=5, type=int)
@@ -106,8 +107,11 @@ class DataGroupShapley(object):
             old_score = new_score
             old_adv_score = new_adv_score
 
-            indices = self.group_indices[permutation[:idx+1], :].view(-1)
+            indices = list()
+            for i in permutation[:idx+1]:
+                indices.append(self.group_indices[i])
 
+            indices = torch.cat(indices, dim=0)
             self.retrain(indices)
             new_score, new_adv_score = self.test()
 
@@ -123,7 +127,7 @@ class DataGroupShapley(object):
         self.model.eval()
 
         losses = list()
-        for data, target, index in self.train_loader:
+        for data, target in self.train_loader:
             data, target = data.to(args.device), target.to(args.device)
             with torch.no_grad():
                 adv_data = pgd_inf_test(self.model, data, target, args.epsilon, args.alpha, args.steps,
@@ -132,14 +136,23 @@ class DataGroupShapley(object):
                 adv_preds = self.model(adv_data)
                 loss = F.cross_entropy(adv_preds, target, reduction='none')
                 losses.append(loss)
-        losses = torch.cat(losses, dim=0)
-        indices = losses.sort()[1].cpu()
-        group_capacity = int(args.total/self.num_groups)
-        group_indices = [
-            indices[k*group_capacity:(k+1)*group_capacity]
-            for k in range(self.num_groups)
-        ]
-        group_indices = torch.stack(group_indices, dim=0)
+        losses = torch.cat(losses, dim=0).cpu()
+
+        group_indices = list()
+        if args.group_mode == 'probability':
+            probs = torch.exp(-losses)
+            for i in range(args.num_groups):
+                group_indices.append(
+                    torch.nonzero((i/args.num_groups < probs) * (probs <= (i+1)/args.num_groups))
+                )
+
+        if args.group_mode == 'quantity':
+            indices = losses.sort()[1]
+            group_capacity = int(args.total/self.num_groups)
+            for i in range(self.num_groups):
+                group_indices.append(
+                    indices[i*group_capacity:(i+1)*group_capacity]
+                )
         return group_indices
 
     def retrain(self, indices):
@@ -169,7 +182,7 @@ class DataGroupShapley(object):
         total = 0
         correct = 0
         adv_correct = 0
-        for data, target, index in self.test_loader:
+        for data, target in self.test_loader:
             data, target = data.to(args.device), target.to(args.device)
             total += len(data)
             with torch.no_grad():
@@ -187,11 +200,11 @@ class DataGroupShapley(object):
 if __name__ == '__main__':
     args = get_args()
     load_path = './logs/shapley/resnet18/at/ckpts/105.pth'
-    save_path = f'./logs/shapley/resnet18/{args.num_groups}_{args.num_permutations}_{args.retrain_epochs}'
+    save_path = f'./logs/shapley/resnet18/{args.group_mode}/{args.num_groups}_{args.num_permutations}_{args.retrain_epochs}'
     os.makedirs(save_path, exist_ok=True)
     model = eval(args.model_name)(args.num_classes).to(args.device)
     dgs = DataGroupShapley(model, load_path=load_path, num_groups=args.num_groups,
                            num_permutations=args.num_permutations, retrain_epochs=args.retrain_epochs,
                            data_path='/data/yihan/datasets')
-    dgs.run()
+    #dgs.run()
     
