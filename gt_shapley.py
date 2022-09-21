@@ -36,7 +36,7 @@ def get_args():
     parser.add_argument('--weight-decay', default=5e-4, type=float)
     parser.add_argument('--total', default=50000, type=int, help='the number of samples in the training set')
 
-    parser.add_argument('--device', default='cuda:1', type=str)
+    parser.add_argument('--device', default='cuda:2', type=str)
     parser.add_argument('--shapley-mode', default='group_testing')
     parser.add_argument('--group-mode', default='probability', choices=['probability', 'quantity'])
     parser.add_argument('--num-groups', default=5, type=int)
@@ -136,7 +136,7 @@ class DataGroupShapley(object):
     def solve(self, utilities, total_utility):
         num_columns = int((args.num_groups-1)*args.num_groups/2) + 1
         A = np.zeros(shape=(num_columns, args.num_groups))
-        b = np.zeros(args.num_columns)
+        b = np.zeros(num_columns)
         col_idx = 0
         for i in range(args.num_groups):
             for j in range(i, args.num_groups):
