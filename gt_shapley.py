@@ -245,7 +245,7 @@ if __name__ == '__main__':
     dgs = DataGroupShapley(model, load_path=load_path, num_groups=args.num_groups,
                            num_iterations=args.num_iterations, retrain_epochs=args.retrain_epochs,
                            data_path='/data/yihan/datasets')
-    shapley_writer = open(os.path.join(save_path, 'groups.txt'), mode='w')
-
+    group_writer = open(os.path.join(save_path, 'groups.txt'), mode='w')
+    group_writer.write(str(dgs.group_indices))
     dgs.run()
     
