@@ -71,11 +71,11 @@ class DataGroupShapley(object):
 
         self.info_writer = open(os.path.join(save_path, 'info.txt'), mode='w')
         for g in self.group_indices:
-            self.info_writer.write(str(len(g)))
-        self.info_writer.write('init acc'+str(self.init_acc))
-        self.info_writer.write('init adv acc'+str(self.init_adv_acc))
-        self.info_writer.write('final acc'+str(self.final_acc))
-        self.info_writer.write('final adv acc'+str(self.final_adv_acc))
+            self.info_writer.write(str(len(g)) + '\n')
+        self.info_writer.write('init acc'+str(self.init_acc) + '\n')
+        self.info_writer.write('init adv acc'+str(self.init_adv_acc) + '\n')
+        self.info_writer.write('final acc'+str(self.final_acc) + '\n')
+        self.info_writer.write('final adv acc'+str(self.final_adv_acc) + '\n')
 
 
     def prepare_data(self):
@@ -136,13 +136,13 @@ class DataGroupShapley(object):
         adv_utilities = adv_utilities.mean(axis=0) * self.z
 
         shapley_values = self.solve(utilities, self.final_acc - self.init_acc)
-        adv_shapley_values = self.solve(adv_utilities, self.final_adv_acc - self.final_adv_acc)
+        adv_shapley_values = self.solve(adv_utilities, self.final_adv_acc - self.init_adv_acc)
 
         self.info_writer.write(
-            'shapley values' + str(shapley_values)
+            'shapley values' + str(shapley_values) + '\n'
         )
         self.info_writer.write(
-            'adv shapley values' + str(adv_shapley_values)
+            'adv shapley values' + str(adv_shapley_values) + '\n'
         )
 
     def solve(self, utilities, total_utility):
